@@ -134,3 +134,212 @@ class WAF:
         self._add_rule_defaults()
 
     # ============================================================
+    # SQL INJECTION
+    # ============================================================
+
+    def load_sqli_rules(self):
+
+        return [
+
+            {
+                "id": "SQLI-101",
+                "name": "Boolean-based SQL Injection",
+                "pattern": (
+                    r"(\bor\b|\band\b)\s+"
+                    r"['\"]?\d+['\"]?\s*=\s*"
+                    r"['\"]?\d+"
+                ),
+                "severity": "HIGH",
+                "category": "SQLI",
+                "confidence": 0.92,
+            },
+
+            {
+                "id": "SQLI-102",
+                "name": "UNION SELECT SQL Injection",
+                "pattern": (
+                    r"\bunion\s+"
+                    r"(?:all\s+)?select\b"
+                ),
+                "severity": "HIGH",
+                "category": "SQLI",
+                "confidence": 0.97,
+            },
+
+            {
+                "id": "SQLI-103",
+                "name": "Error-based SQL Injection",
+                "pattern": (
+                    r"\b(?:extractvalue|updatexml)"
+                    r"\s*\("
+                ),
+                "severity": "HIGH",
+                "category": "SQLI",
+                "confidence": 0.95,
+            },
+
+            {
+                "id": "SQLI-104",
+                "name": "Stacked SQL Query",
+                "pattern": (
+                    r";\s*(?:select|insert|update|"
+                    r"delete|drop|alter)\b"
+                ),
+                "severity": "CRITICAL",
+                "category": "SQLI",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "SQLI-105",
+                "name": "Time-based SQL Injection",
+                "pattern": (
+                    r"\b(?:sleep|benchmark|pg_sleep)"
+                    r"\s*\(|"
+                    r"\bwaitfor\s+delay\b"
+                ),
+                "severity": "CRITICAL",
+                "category": "SQLI",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "SQLI-106",
+                "name": "SQL Comment Injection",
+                "pattern": (
+                    r"(?:--[ \t]|#[ \t]|/\*.*?\*/)"
+                ),
+                "severity": "MEDIUM",
+                "category": "SQLI",
+                "confidence": 0.80,
+            },
+
+            {
+                "id": "SQLI-107",
+                "name": "SQL Tautology",
+                "pattern": (
+                    r"(?:['\"]?\s*(?:or|and)\s+"
+                    r"['\"]?\w+['\"]?\s*=\s*"
+                    r"['\"]?\w+)"
+                ),
+                "severity": "HIGH",
+                "category": "SQLI",
+                "confidence": 0.86,
+            },
+
+            {
+                "id": "SQLI-108",
+                "name": "Information Schema Access",
+                "pattern": (
+                    r"\binformation_schema\b"
+                ),
+                "severity": "HIGH",
+                "category": "SQLI",
+                "confidence": 0.93,
+            },
+
+            {
+                "id": "SQLI-109",
+                "name": "SQL Database Function",
+                "pattern": (
+                    r"\b(?:version|database|"
+                    r"current_user|schema)"
+                    r"\s*\(\s*\)"
+                ),
+                "severity": "MEDIUM",
+                "category": "SQLI",
+                "confidence": 0.84,
+            },
+        ]
+
+    # ============================================================
+    # XSS
+    # ============================================================
+
+    def load_xss_rules(self):
+
+        return [
+
+            {
+                "id": "XSS-201",
+                "name": "Script Tag Injection",
+                "pattern": (
+                    r"<\s*script\b[^>]*>"
+                    r".*?"
+                    r"<\s*/\s*script\s*>"
+                ),
+                "severity": "CRITICAL",
+                "category": "XSS",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "XSS-202",
+                "name": "Event Handler Injection",
+                "pattern": (
+                    r"\bon[a-z]+\s*="
+                ),
+                "severity": "HIGH",
+                "category": "XSS",
+                "confidence": 0.92,
+            },
+
+            {
+                "id": "XSS-203",
+                "name": "JavaScript Protocol",
+                "pattern": (
+                    r"\bjavascript\s*:"
+                ),
+                "severity": "CRITICAL",
+                "category": "XSS",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "XSS-204",
+                "name": "IMG Event XSS",
+                "pattern": (
+                    r"<\s*img\b[^>]+"
+                    r"\bon[a-z]+\s*="
+                ),
+                "severity": "HIGH",
+                "category": "XSS",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "XSS-205",
+                "name": "SVG Event XSS",
+                "pattern": (
+                    r"<\s*svg\b[^>]*"
+                    r"\bon[a-z]+\s*="
+                ),
+                "severity": "HIGH",
+                "category": "XSS",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "XSS-206",
+                "name": "Iframe Injection",
+                "pattern": (
+                    r"<\s*iframe\b[^>]*>"
+                ),
+                "severity": "HIGH",
+                "category": "XSS",
+                "confidence": 0.95,
+            },
+
+            {
+                "id": "XSS-207",
+                "name": "Object/Embed Injection",
+                "pattern": (
+                    r"<\s*(?:object|embed)\b[^>]*>"
+                ),
+                "severity": "HIGH",
+                "category": "XSS",
+                "confidence": 0.93,
+            },
+        ]
+
+    # ============================================================
