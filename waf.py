@@ -343,3 +343,217 @@ class WAF:
         ]
 
     # ============================================================
+    # LFI
+    # ============================================================
+
+    def load_lfi_rules(self):
+
+        return [
+
+            {
+                "id": "LFI-301",
+                "name": "Directory Traversal",
+                "pattern": (
+                    r"(?:\.\./|\.\.\\|"
+                    r"%2e%2e%2f|%2e%2e%5c)"
+                ),
+                "severity": "HIGH",
+                "category": "LFI",
+                "confidence": 0.96,
+            },
+
+            {
+                "id": "LFI-302",
+                "name": "Linux Sensitive File Inclusion",
+                "pattern": (
+                    r"(?:/etc/(?:passwd|shadow|hosts)|"
+                    r"/proc/self/environ)"
+                ),
+                "severity": "CRITICAL",
+                "category": "LFI",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "LFI-303",
+                "name": "Windows Sensitive File Inclusion",
+                "pattern": (
+                    r"(?:boot\.ini|win\.ini|system32|"
+                    r"drivers/etc/hosts)"
+                ),
+                "severity": "CRITICAL",
+                "category": "LFI",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "LFI-304",
+                "name": "PHP/URL Wrapper",
+                "pattern": (
+                    r"(?:php://|file://|zip://|"
+                    r"data://|expect://)"
+                ),
+                "severity": "CRITICAL",
+                "category": "LFI",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "LFI-305",
+                "name": "Null Byte Injection",
+                "pattern": (
+                    r"(?:%00|\x00)"
+                ),
+                "severity": "HIGH",
+                "category": "LFI",
+                "confidence": 0.95,
+            },
+        ]
+
+    # ============================================================
+    # RFI
+    # ============================================================
+
+    def load_rfi_rules(self):
+
+        return [
+
+            {
+                "id": "RFI-401",
+                "name": "HTTP/HTTPS Remote File Inclusion",
+                "pattern": (
+                    r"^https?://[^\s<>\"']+"
+                ),
+                "severity": "CRITICAL",
+                "category": "RFI",
+                "confidence": 0.86,
+            },
+
+            {
+                "id": "RFI-402",
+                "name": "FTP Remote File Inclusion",
+                "pattern": (
+                    r"^ftp://[^\s<>\"']+"
+                ),
+                "severity": "HIGH",
+                "category": "RFI",
+                "confidence": 0.90,
+            },
+
+            {
+                "id": "RFI-403",
+                "name": "Protocol-relative Inclusion",
+                "pattern": (
+                    r"^//[a-z0-9.-]+(?:[:/]|$)"
+                ),
+                "severity": "HIGH",
+                "category": "RFI",
+                "confidence": 0.88,
+            },
+
+            {
+                "id": "RFI-404",
+                "name": "Encoded Remote URL",
+                "pattern": (
+                    r"(?:https?|ftp)%3a%2f%2f"
+                ),
+                "severity": "CRITICAL",
+                "category": "RFI",
+                "confidence": 0.97,
+            },
+
+            {
+                "id": "RFI-405",
+                "name": "Double Encoded Remote URL",
+                "pattern": (
+                    r"(?:https?|ftp)"
+                    r"%253a%252f%252f"
+                ),
+                "severity": "CRITICAL",
+                "category": "RFI",
+                "confidence": 0.98,
+            },
+        ]
+
+    # ============================================================
+    # COMMAND INJECTION
+    # ============================================================
+
+    def load_command_injection_rules(self):
+
+        t = self.COMMAND_TOKENS
+
+        return [
+
+            {
+                "id": "CMD-301",
+                "name": "Command Separator Injection",
+                "pattern": (
+                    rf"(?:;|&&|\|\||&)\s*"
+                    rf"(?:{t})\b"
+                ),
+                "severity": "CRITICAL",
+                "category": "COMMAND_INJECTION",
+                "confidence": 0.97,
+            },
+
+            {
+                "id": "CMD-302",
+                "name": "Pipe Command Injection",
+                "pattern": (
+                    rf"\|\s*(?:{t})\b"
+                ),
+                "severity": "HIGH",
+                "category": "COMMAND_INJECTION",
+                "confidence": 0.94,
+            },
+
+            {
+                "id": "CMD-303",
+                "name": "Command Substitution",
+                "pattern": (
+                    rf"\$\(\s*(?:{t})\b"
+                ),
+                "severity": "CRITICAL",
+                "category": "COMMAND_INJECTION",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "CMD-304",
+                "name": "Backtick Command Execution",
+                "pattern": (
+                    rf"`\s*(?:{t})\b"
+                ),
+                "severity": "CRITICAL",
+                "category": "COMMAND_INJECTION",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "CMD-305",
+                "name": "Newline Command Injection",
+                "pattern": (
+                    rf"(?:\r|\n)\s*"
+                    rf"(?:{t})\b"
+                ),
+                "severity": "HIGH",
+                "category": "COMMAND_INJECTION",
+                "confidence": 0.95,
+            },
+
+            {
+                "id": "CMD-306",
+                "name": "Windows Shell Invocation",
+                "pattern": (
+                    r"(?:cmd(?:\.exe)?\s*/c|"
+                    r"powershell(?:\.exe)?\s+"
+                    r"-(?:command|enc|encodedcommand))"
+                ),
+                "severity": "CRITICAL",
+                "category": "COMMAND_INJECTION",
+                "confidence": 0.98,
+            },
+        ]
+
+    # ============================================================
