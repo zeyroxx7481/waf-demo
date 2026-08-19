@@ -557,3 +557,262 @@ class WAF:
         ]
 
     # ============================================================
+    # PATH TRAVERSAL
+    # ============================================================
+
+    def load_path_traversal_rules(self):
+
+        return [
+
+            {
+                "id": "PATH-501",
+                "name": "Directory Traversal",
+                "pattern": (
+                    r"(?:\.\./|\.\.\\|"
+                    r"%2e%2e%2f|%2e%2e%5c)"
+                ),
+                "severity": "HIGH",
+                "category": "PATH_TRAVERSAL",
+                "confidence": 0.96,
+            },
+
+            {
+                "id": "PATH-502",
+                "name": "Sensitive Unix Path",
+                "pattern": (
+                    r"(?:/etc/(?:passwd|shadow|hosts)|"
+                    r"/proc/self/environ)"
+                ),
+                "severity": "CRITICAL",
+                "category": "PATH_TRAVERSAL",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "PATH-503",
+                "name": "Sensitive Windows Path",
+                "pattern": (
+                    r"(?:\\windows\\system32\\|"
+                    r"/windows/system32/|boot\.ini|win\.ini)"
+                ),
+                "severity": "CRITICAL",
+                "category": "PATH_TRAVERSAL",
+                "confidence": 0.98,
+            },
+        ]
+
+    # ============================================================
+    # SSRF
+    # ============================================================
+
+    def load_ssrf_rules(self):
+
+        return [
+
+            {
+                "id": "SSRF-601",
+                "name": "Localhost SSRF",
+                "pattern": (
+                    r"^(?:https?|ftp)://"
+                    r"(?:localhost|"
+                    r"127(?:\.\d{1,3}){3}|"
+                    r"0\.0\.0\.0|\[::1\])"
+                    r"(?::\d+)?(?:[/?#]|$)"
+                ),
+                "severity": "HIGH",
+                "category": "SSRF",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "SSRF-602",
+                "name": "Private Network SSRF",
+                "pattern": (
+                    r"^(?:https?|ftp)://"
+                    r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+                    r"192\.168\.\d{1,3}\.\d{1,3}|"
+                    r"172\.(?:1[6-9]|2\d|3[0-1])\."
+                    r"\d{1,3}\.\d{1,3})"
+                    r"(?::\d+)?(?:[/?#]|$)"
+                ),
+                "severity": "HIGH",
+                "category": "SSRF",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "SSRF-603",
+                "name": "Cloud Metadata SSRF",
+                "pattern": (
+                    r"^(?:https?|http)://"
+                    r"169\.254\.169\.254"
+                    r"(?::\d+)?(?:[/?#]|$)"
+                ),
+                "severity": "CRITICAL",
+                "category": "SSRF",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "SSRF-604",
+                "name": "IPv6 Loopback SSRF",
+                "pattern": (
+                    r"^(?:https?|http)://"
+                    r"(?:\[?::1\]?|"
+                    r"\[?0:0:0:0:0:0:0:1\]?)"
+                    r"(?::\d+)?(?:[/?#]|$)"
+                ),
+                "severity": "HIGH",
+                "category": "SSRF",
+                "confidence": 0.99,
+            },
+        ]
+
+    # ============================================================
+    # CRLF
+    # ============================================================
+
+    def load_crlf_rules(self):
+
+        return [
+
+            {
+                "id": "CRLF-701",
+                "name": "CRLF Injection",
+                "pattern": (
+                    r"(?:%0d|%0a|\r|\n)"
+                ),
+                "severity": "HIGH",
+                "category": "CRLF_INJECTION",
+                "confidence": 0.94,
+            }
+        ]
+
+    # ============================================================
+    # NoSQL INJECTION
+    # ============================================================
+
+    def load_nosql_rules(self):
+
+        return [
+
+            {
+                "id": "NOSQL-801",
+                "name": "MongoDB Operator Injection",
+                "pattern": (
+                    r"(?i)(?:[\"']?\$"
+                    r"(?:where|regex|ne|gt|gte|lt|lte|"
+                    r"in|nin|exists|or|and|expr)"
+                    r"[\"']?\s*:)"
+                ),
+                "severity": "HIGH",
+                "category": "NOSQL_INJECTION",
+                "confidence": 0.96,
+            },
+
+            {
+                "id": "NOSQL-802",
+                "name": "MongoDB JavaScript Operator",
+                "pattern": (
+                    r"(?i)\$(?:where|function)\b"
+                ),
+                "severity": "CRITICAL",
+                "category": "NOSQL_INJECTION",
+                "confidence": 0.98,
+            },
+
+            {
+                "id": "NOSQL-803",
+                "name": "NoSQL Expression Injection",
+                "pattern": (
+                    r"(?i)(?:"
+                    r"\$(?:ne|gt|gte|lt|lte|in|nin|exists)"
+                    r"\s*[:=]|"
+                    r"\bwhere\b\s*[:=]|"
+                    r"\bregex\b\s*[:=])"
+                ),
+                "severity": "HIGH",
+                "category": "NOSQL_INJECTION",
+                "confidence": 0.90,
+            },
+        ]
+
+    # ============================================================
+    # LDAP INJECTION
+    # ============================================================
+
+    def load_ldap_rules(self):
+
+        return [
+
+            {
+                "id": "LDAP-901",
+                "name": "LDAP Filter Injection",
+                "pattern": (
+                    r"(?i)(?:"
+                    r"\(\s*[!|&]"
+                    r"|\*\s*\)"
+                    r"|\)\s*\("
+                    r"|\(\s*\w+\s*=\s*\*\s*\)"
+                    r")"
+                ),
+                "severity": "HIGH",
+                "category": "LDAP_INJECTION",
+                "confidence": 0.91,
+            },
+
+            {
+                "id": "LDAP-902",
+                "name": "LDAP Wildcard Manipulation",
+                "pattern": (
+                    r"(?i)(?:"
+                    r"\*\)"
+                    r"|\)\s*\(\w+="
+                    r"|\(\w+=\*[^)]*\)"
+                    r")"
+                ),
+                "severity": "HIGH",
+                "category": "LDAP_INJECTION",
+                "confidence": 0.93,
+            },
+        ]
+
+    # ============================================================
+    # XPath INJECTION
+    # ============================================================
+
+    def load_xpath_rules(self):
+
+        return [
+
+            {
+                "id": "XPATH-1001",
+                "name": "XPath Boolean Injection",
+                "pattern": (
+                    r"(?i)(?:"
+                    r"['\"]\s*(?:or|and)\s+"
+                    r"['\"]?[^=\s]+\s*=\s*"
+                    r"['\"]?[^'\"]+"
+                    r")"
+                ),
+                "severity": "HIGH",
+                "category": "XPATH_INJECTION",
+                "confidence": 0.90,
+            },
+
+            {
+                "id": "XPATH-1002",
+                "name": "XPath Function Injection",
+                "pattern": (
+                    r"(?i)\b(?:contains|substring|"
+                    r"string-length|starts-with|"
+                    r"count|name|local-name)"
+                    r"\s*\("
+                ),
+                "severity": "MEDIUM",
+                "category": "XPATH_INJECTION",
+                "confidence": 0.80,
+            },
+        ]
+
+    # ============================================================
