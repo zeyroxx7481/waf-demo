@@ -816,3 +816,254 @@ class WAF:
         ]
 
     # ============================================================
+    # SSTI
+    # ============================================================
+
+    def load_ssti_rules(self):
+
+        return [
+
+            {
+                "id": "SSTI-1101",
+                "name": "Jinja/Twig Template Expression",
+                "pattern": (
+                    r"(?:"
+                    r"\{\{[^{}]{1,200}\}\}"
+                    r"|\{%[^%]{1,200}%\}"
+                    r"|\{#[^#]{1,200}#\}"
+                    r")"
+                ),
+                "severity": "HIGH",
+                "category": "SSTI",
+                "confidence": 0.88,
+            },
+
+            {
+                "id": "SSTI-1102",
+                "name": "Template Object Access",
+                "pattern": (
+                    r"(?i)(?:__class__|__mro__|"
+                    r"__subclasses__|__globals__|"
+                    r"__builtins__)"
+                ),
+                "severity": "CRITICAL",
+                "category": "SSTI",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "SSTI-1103",
+                "name": "Expression Language Injection",
+                "pattern": (
+                    r"(?:\$\{[^{}]{1,200}\}"
+                    r"|#\{[^{}]{1,200}\})"
+                ),
+                "severity": "HIGH",
+                "category": "SSTI",
+                "confidence": 0.86,
+            },
+
+            {
+                "id": "SSTI-1104",
+                "name": "ERB Template Expression",
+                "pattern": (
+                    r"<%=?[^%]{1,200}%>"
+                ),
+                "severity": "HIGH",
+                "category": "SSTI",
+                "confidence": 0.88,
+            },
+        ]
+
+    # ============================================================
+    # XXE
+    # ============================================================
+
+    def load_xxe_rules(self):
+
+        return [
+
+            {
+                "id": "XXE-1201",
+                "name": "XML DOCTYPE Declaration",
+                "pattern": (
+                    r"(?is)<!DOCTYPE\s+"
+                    r"[^\[]+"
+                    r"(?:\[[\s\S]{0,500}\]\s*)?>"
+                ),
+                "severity": "HIGH",
+                "category": "XXE",
+                "confidence": 0.88,
+            },
+
+            {
+                "id": "XXE-1202",
+                "name": "XML External Entity",
+                "pattern": (
+                    r"(?is)<!ENTITY\s+\w+\s+"
+                    r"(?:SYSTEM|PUBLIC)\s+[\"']"
+                ),
+                "severity": "CRITICAL",
+                "category": "XXE",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "XXE-1203",
+                "name": "External Entity File/URL Target",
+                "pattern": (
+                    r"(?is)\bSYSTEM\s+[\"']"
+                    r"(?:file:|https?://|ftp:|php://)"
+                ),
+                "severity": "CRITICAL",
+                "category": "XXE",
+                "confidence": 0.99,
+            },
+        ]
+
+    # ============================================================
+    # HOST HEADER INJECTION
+    # ============================================================
+
+    def load_host_header_rules(self):
+
+        return [
+
+            {
+                "id": "HOST-1301",
+                "name": "Suspicious Host Header",
+                "pattern": (
+                    r"(?i)(?:@|%40|[\r\n]|\s)"
+                ),
+                "severity": "HIGH",
+                "category": "HOST_HEADER_INJECTION",
+                "confidence": 0.92,
+                "contexts": {"host"},
+            },
+
+            {
+                "id": "HOST-1302",
+                "name": "Malformed Host Header",
+                "pattern": (
+                    r"(?i)^[^/:]+"
+                    r"(?::\d+){2,}$"
+                ),
+                "severity": "HIGH",
+                "category": "HOST_HEADER_INJECTION",
+                "confidence": 0.90,
+                "contexts": {"host"},
+            },
+        ]
+
+    # ============================================================
+    # OPEN REDIRECT
+    # ============================================================
+
+    def load_open_redirect_rules(self):
+
+        return [
+
+            {
+                "id": "REDIRECT-1401",
+                "name": "Absolute External Redirect",
+                "pattern": (
+                    r"(?i)^(?:https?:)?//"
+                    r"(?:[a-z0-9.-]+)"
+                    r"(?::\d+)?(?:/|$)"
+                ),
+                "severity": "HIGH",
+                "category": "OPEN_REDIRECT",
+                "confidence": 0.82,
+                "contexts": {
+                    "query",
+                    "body",
+                    "json",
+                    "multipart"
+                },
+            },
+
+            {
+                "id": "REDIRECT-1402",
+                "name": "Encoded External Redirect",
+                "pattern": (
+                    r"(?i)(?:https?)"
+                    r"%3a%2f%2f|"
+                    r"%2f%2f[a-z0-9.-]+"
+                ),
+                "severity": "HIGH",
+                "category": "OPEN_REDIRECT",
+                "confidence": 0.90,
+                "contexts": {
+                    "query",
+                    "body",
+                    "json",
+                    "multipart"
+                },
+            },
+        ]
+
+    # ============================================================
+    # HTTP PARAMETER POLLUTION
+    # ============================================================
+
+    def load_hpp_rules(self):
+
+        return [
+
+            {
+                "id": "HPP-1501",
+                "name": "HTTP Parameter Pollution",
+                "pattern": r".+",
+                "severity": "MEDIUM",
+                "category": "HPP",
+                "confidence": 0.70,
+                "contexts": {
+                    "query",
+                    "body"
+                },
+            }
+        ]
+
+    # ============================================================
+    # REQUEST SMUGGLING
+    # ============================================================
+
+    def load_request_smuggling_rules(self):
+
+        return [
+
+            {
+                "id": "SMUG-1601",
+                "name": "Transfer-Encoding and Content-Length Conflict",
+                "pattern": r".+",
+                "severity": "CRITICAL",
+                "category": "HTTP_REQUEST_SMUGGLING",
+                "confidence": 0.99,
+                "contexts": {"smuggling"},
+            },
+
+            {
+                "id": "SMUG-1602",
+                "name": "Duplicate Content-Length",
+                "pattern": r".+",
+                "severity": "CRITICAL",
+                "category": "HTTP_REQUEST_SMUGGLING",
+                "confidence": 0.99,
+                "contexts": {"smuggling"},
+            },
+
+            {
+                "id": "SMUG-1603",
+                "name": "Suspicious Transfer-Encoding",
+                "pattern": (
+                    r"(?i)(?:chunked\s*,|,\s*chunked|"
+                    r"identity\s*,|,\s*identity)"
+                ),
+                "severity": "HIGH",
+                "category": "HTTP_REQUEST_SMUGGLING",
+                "confidence": 0.93,
+                "contexts": {"smuggling"},
+            },
+        ]
+
+    # ============================================================
