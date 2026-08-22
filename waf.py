@@ -1067,3 +1067,261 @@ class WAF:
         ]
 
     # ============================================================
+    # FILE UPLOAD
+    # ============================================================
+
+    def load_file_upload_rules(self):
+
+        return [
+
+            {
+                "id": "UPLOAD-1701",
+                "name": "Executable Upload Extension",
+                "pattern": (
+                    r"(?i)\."
+                    r"(?:php[0-9]?|phtml|phar|"
+                    r"asp|aspx|jsp|jspx|cgi|"
+                    r"pl|py|sh|exe|dll)"
+                    r"(?:\.|$)"
+                ),
+                "severity": "HIGH",
+                "category": "FILE_UPLOAD",
+                "confidence": 0.92,
+                "contexts": {"filename"},
+            },
+
+            {
+                "id": "UPLOAD-1702",
+                "name": "Double Extension Upload",
+                "pattern": (
+                    r"(?i)\."
+                    r"[a-z0-9]{1,10}\."
+                    r"(?:php|phtml|asp|aspx|"
+                    r"jsp|jspx|exe|sh)"
+                    r"(?:$|\.)"
+                ),
+                "severity": "HIGH",
+                "category": "FILE_UPLOAD",
+                "confidence": 0.94,
+                "contexts": {"filename"},
+            },
+
+            {
+                "id": "UPLOAD-1703",
+                "name": "Null Byte Filename",
+                "pattern": (
+                    r"(?:%00|\x00)"
+                ),
+                "severity": "HIGH",
+                "category": "FILE_UPLOAD",
+                "confidence": 0.97,
+                "contexts": {"filename"},
+            },
+        ]
+
+    # ============================================================
+    # INSECURE DESERIALIZATION
+    # ============================================================
+
+    def load_deserialization_rules(self):
+
+        return [
+
+            {
+                "id": "DESER-1801",
+                "name": "PHP Serialized Object",
+                "pattern": (
+                    r'(?i)(?:^|[;&])'
+                    r'O:\d+:"[^"]+":\d+:\{'
+                ),
+                "severity": "HIGH",
+                "category": "INSECURE_DESERIALIZATION",
+                "confidence": 0.95,
+            },
+
+            {
+                "id": "DESER-1802",
+                "name": "Java Serialization Stream",
+                "pattern": (
+                    r"\xac\xed\x00\x05"
+                ),
+                "severity": "HIGH",
+                "category": "INSECURE_DESERIALIZATION",
+                "confidence": 0.99,
+            },
+
+            {
+                "id": "DESER-1803",
+                "name": "Python Pickle Signature",
+                "pattern": (
+                    r"(?i)(?:gAS"
+                    r"[A-Za-z0-9_-]{10,}|"
+                    r"c__main__\n)"
+                ),
+                "severity": "HIGH",
+                "category": "INSECURE_DESERIALIZATION",
+                "confidence": 0.85,
+            },
+        ]
+
+    # ============================================================
+    # COMPONENT DISCLOSURE
+    # ============================================================
+
+    def load_component_rules(self):
+
+        return [
+
+            {
+                "id": "COMP-1901",
+                "name": "Old Technology Version Disclosure",
+                "pattern": (
+                    r"(?i)(?:"
+                    r"Apache/1\.|"
+                    r"Apache/2\.0|"
+                    r"PHP/[4-5]\.|"
+                    r"OpenSSL/[01]\.|"
+                    r"nginx/0\."
+                    r")"
+                ),
+                "severity": "LOW",
+                "category": "VULNERABLE_COMPONENT_DISCLOSURE",
+                "confidence": 0.65,
+                "contexts": {"header"},
+            }
+        ]
+
+    # ============================================================
+    # RESPONSE SECURITY RULES
+    # ============================================================
+
+    def load_response_rules(self):
+
+        return [
+
+            {
+                "id": "RESP-2001",
+                "name": "Missing X-Content-Type-Options",
+                "severity": "LOW",
+                "category": "SECURITY_MISCONFIGURATION",
+                "confidence": 0.70,
+            },
+
+            {
+                "id": "RESP-2002",
+                "name": "Missing Content-Security-Policy",
+                "severity": "LOW",
+                "category": "SECURITY_MISCONFIGURATION",
+                "confidence": 0.65,
+            },
+
+            {
+                "id": "RESP-2003",
+                "name": "Missing Referrer-Policy",
+                "severity": "LOW",
+                "category": "SECURITY_MISCONFIGURATION",
+                "confidence": 0.70,
+            },
+
+            {
+                "id": "RESP-2004",
+                "name": "Missing Frame Protection",
+                "severity": "LOW",
+                "category": "SECURITY_MISCONFIGURATION",
+                "confidence": 0.75,
+            },
+
+            {
+                "id": "RESP-2005",
+                "name": "Cookie Missing Secure Flag",
+                "severity": "MEDIUM",
+                "category": "CRYPTOGRAPHIC_FAILURES",
+                "confidence": 0.90,
+            },
+
+            {
+                "id": "RESP-2006",
+                "name": "Cookie Missing HttpOnly",
+                "severity": "MEDIUM",
+                "category": "IDENTIFICATION_AUTHENTICATION",
+                "confidence": 0.85,
+            },
+
+            {
+                "id": "RESP-2007",
+                "name": "Cookie Missing SameSite",
+                "severity": "LOW",
+                "category": "CSRF",
+                "confidence": 0.75,
+            },
+
+            {
+                "id": "RESP-2008",
+                "name": "Verbose Server Header",
+                "severity": "LOW",
+                "category": "SECURITY_MISCONFIGURATION",
+                "confidence": 0.65,
+            },
+        ]
+
+    # ============================================================
+    # DEFAULT RULE PROPERTIES
+    # ============================================================
+
+    def _add_rule_defaults(self):
+
+        all_sets = (
+
+            self.sqli_rules,
+            self.xss_rules,
+            self.lfi_rules,
+            self.rfi_rules,
+            self.command_injection_rules,
+            self.path_traversal_rules,
+            self.ssrf_rules,
+            self.crlf_rules,
+
+            self.nosql_rules,
+            self.ldap_rules,
+            self.xpath_rules,
+            self.ssti_rules,
+            self.xxe_rules,
+
+            self.host_header_rules,
+            self.open_redirect_rules,
+            self.hpp_rules,
+            self.request_smuggling_rules,
+            self.file_upload_rules,
+            self.deserialization_rules,
+            self.component_rules,
+        )
+
+        default_contexts = {
+
+            "path",
+            "query",
+            "body",
+            "json",
+            "multipart",
+            "filename",
+            "header",
+            "cookie",
+            "host",
+            "smuggling",
+        }
+
+        for ruleset in all_sets:
+
+            for rule in ruleset:
+
+                rule.setdefault(
+                    "confidence",
+                    0.85
+                )
+
+                rule.setdefault(
+                    "contexts",
+                    default_contexts
+                )
+
+    # ============================================================
