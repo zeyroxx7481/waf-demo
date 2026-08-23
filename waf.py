@@ -1650,3 +1650,556 @@ class WAF:
         return False
 
     # ============================================================
+    # JSON FLATTENING
+    # ============================================================
+
+    def flatten_json(
+        self,
+        data,
+        parent_key=""
+    ):
+
+        pairs = []
+
+        if isinstance(
+            data,
+            dict
+        ):
+
+            for key, value in (
+                data.items()
+            ):
+
+                full_key = (
+
+                    f"{parent_key}.{key}"
+
+                    if parent_key
+
+                    else str(key)
+                )
+
+                pairs.extend(
+
+                    self.flatten_json(
+
+                        value,
+
+                        full_key
+                    )
+                )
+
+        elif isinstance(
+            data,
+            list
+        ):
+
+            for index, value in enumerate(
+                data
+            ):
+
+                full_key = (
+                    f"{parent_key}[{index}]"
+                )
+
+                pairs.extend(
+
+                    self.flatten_json(
+
+                        value,
+
+                        full_key
+                    )
+                )
+
+        else:
+
+            pairs.append(
+
+                (
+                    parent_key,
+
+                    ""
+                    if data is None
+                    else str(data)
+                )
+            )
+
+        return pairs
+
+    # ============================================================
+    # MULTIPART PARSER
+    # ============================================================
+
+    def parse_multipart(
+        self,
+        body,
+        content_type
+    ):
+
+        params = []
+
+        if not body or not content_type:
+            return params
+
+        try:
+
+            raw_message = (
+
+                f"Content-Type: "
+                f"{content_type}\r\n"
+
+                "MIME-Version: 1.0\r\n\r\n"
+
+                f"{body}"
+            )
+
+            message = (
+                email.message_from_string(
+                    raw_message,
+                    policy=policy.compat32
+                )
+            )
+
+            if not message.is_multipart():
+                return params
+
+            for part in (
+                message.get_payload()
+            ):
+
+                field_name = (
+                    part.get_param(
+                        "name",
+                        header="Content-Disposition"
+                    )
+                )
+
+                filename = (
+                    part.get_param(
+                        "filename",
+                        header="Content-Disposition"
+                    )
+                )
+
+                payload_bytes = (
+                    part.get_payload(
+                        decode=True
+                    )
+                )
+
+                value = ""
+
+                if payload_bytes is not None:
+
+                    value = (
+                        payload_bytes.decode(
+                            "utf-8",
+                            errors="ignore"
+                        )
+                    )
+
+                if field_name:
+
+                    params.append(
+                        (
+                            field_name,
+                            value
+                        )
+                    )
+
+                if filename:
+
+                    params.append(
+                        (
+                            "filename",
+                            filename
+                        )
+                    )
+
+        except Exception:
+
+            pass
+
+        return params
+
+    # ============================================================
+    # REQUEST COMPONENT EXTRACTION
+    # ============================================================
+
+    def extract_request_components(
+        self,
+        path,
+        body,
+        headers=None
+    ):
+
+        components = []
+
+        # --------------------------------------------------------
+        # URL PATH + QUERY
+        # --------------------------------------------------------
+
+        try:
+
+            parsed = (
+                urllib.parse.urlsplit(
+                    path or ""
+                )
+            )
+
+            components.append(
+
+                (
+                    "path",
+                    "<path>",
+                    parsed.path or ""
+                )
+            )
+
+            for key, value in (
+                urllib.parse.parse_qsl(
+
+                    parsed.query,
+
+                    keep_blank_values=True
+                )
+            ):
+
+                components.append(
+
+                    (
+                        "query",
+                        str(key),
+                        self.safe_text(
+                            value
+                        )
+                    )
+                )
+
+        except Exception:
+
+            components.append(
+
+                (
+                    "path",
+                    "<path>",
+                    self.safe_text(
+                        path
+                    )
+                )
+            )
+
+        # --------------------------------------------------------
+        # HEADERS + COOKIES
+        # --------------------------------------------------------
+
+        for key, value in (
+            self.iter_headers(
+                headers
+            )
+        ):
+
+            key_string = str(
+                key
+            )
+
+            context = (
+
+                "cookie"
+
+                if key_string.lower()
+                == "cookie"
+
+                else "header"
+            )
+
+            components.append(
+
+                (
+                    context,
+                    key_string,
+                    self.safe_text(
+                        value
+                    )
+                )
+            )
+
+        # --------------------------------------------------------
+        # HOST
+        # --------------------------------------------------------
+
+        host = self.get_header(
+            headers,
+            "Host",
+            ""
+        )
+
+        if host:
+
+            components.append(
+
+                (
+                    "host",
+                    "Host",
+                    self.safe_text(
+                        host
+                    )
+                )
+            )
+
+        # --------------------------------------------------------
+        # BODY
+        # --------------------------------------------------------
+
+        if not body:
+            return components
+
+        content_type = str(
+
+            self.get_header(
+
+                headers,
+
+                "Content-Type",
+
+                ""
+            )
+
+        ).lower()
+
+        try:
+
+            if (
+                "application/json"
+                in content_type
+            ):
+
+                parsed_json = (
+                    json.loads(
+                        body
+                    )
+                )
+
+                for key, value in (
+                    self.flatten_json(
+                        parsed_json
+                    )
+                ):
+
+                    components.append(
+
+                        (
+                            "json",
+                            key,
+                            self.safe_text(
+                                value
+                            )
+                        )
+                    )
+
+            elif (
+                "multipart/form-data"
+                in content_type
+            ):
+
+                for key, value in (
+                    self.parse_multipart(
+                        body,
+                        content_type
+                    )
+                ):
+
+                    context = (
+
+                        "filename"
+
+                        if key
+                        == "filename"
+
+                        else "multipart"
+                    )
+
+                    components.append(
+
+                        (
+                            context,
+                            key,
+                            self.safe_text(
+                                value
+                            )
+                        )
+                    )
+
+            elif (
+                "application/x-www-form-urlencoded"
+                in content_type
+            ):
+
+                # Only trust key=value&key=value parsing when the
+                # request actually declares itself as form-encoded.
+                # Previously this branch was the catch-all "else",
+                # which meant raw/XML/text bodies with no "="
+                # character (e.g. Content-Type missing, mislabeled,
+                # or a raw payload like "SELECT * FROM users") had
+                # their entire content dumped into parse_qsl's KEY
+                # while the scanned VALUE came back as "" - making
+                # every rule blind to that payload. Restricting this
+                # branch to genuine urlencoded bodies and adding an
+                # explicit raw-body fallback below closes that gap.
+
+                for key, value in (
+
+                    urllib.parse.parse_qsl(
+
+                        body,
+
+                        keep_blank_values=True
+                    )
+                ):
+
+                    components.append(
+
+                        (
+                            "body",
+                            str(key),
+                            self.safe_text(
+                                value
+                            )
+                        )
+                    )
+
+            else:
+
+                # Unknown, missing, or non-form content type
+                # (text/plain, application/xml, GraphQL, SOAP,
+                # a mislabeled JSON body, or no Content-Type at
+                # all). Scan the raw body as a single component
+                # instead of guessing at key=value structure, so
+                # payloads without "=" still get matched against
+                # every rule.
+
+                components.append(
+
+                    (
+                        "body",
+                        "<raw>",
+                        self.safe_text(
+                            body
+                        )
+                    )
+                )
+
+        except Exception:
+
+            components.append(
+
+                (
+                    "body",
+                    "<raw>",
+                    self.safe_text(
+                        body
+                    )
+                )
+            )
+
+        return components
+
+    # ============================================================
+    # BACKWARDS COMPATIBILITY
+    # ============================================================
+
+    def extract_parameters(
+        self,
+        path,
+        body,
+        headers=None
+    ):
+
+        return [
+
+            (
+                name,
+                value
+            )
+
+            for context, name, value
+
+            in self.extract_request_components(
+
+                path,
+                body,
+                headers
+            )
+
+            if context in {
+
+                "query",
+                "body",
+                "json",
+                "multipart",
+                "filename"
+            }
+        ]
+
+    # ============================================================
+    # FILE-INCLUSION PARAMETER HELPER
+    # ============================================================
+
+    def is_file_inclusion_parameter(
+        self,
+        parameter
+    ):
+
+        names = {
+
+            "page",
+            "file",
+            "filename",
+            "filepath",
+            "path",
+            "include",
+            "require",
+            "template",
+            "view",
+            "module",
+            "document",
+            "doc",
+            "folder",
+            "dir",
+            "directory",
+            "resource",
+            "load",
+            "url",
+            "uri",
+            "source",
+            "src",
+            "redirect",
+            "redirect_to",
+            "redirecturl",
+            "next",
+            "return",
+            "returnurl",
+            "return_url",
+            "continue",
+            "dest",
+            "destination",
+            "target",
+            "image",
+            "img",
+            "avatar",
+            "download",
+            "content",
+            "show",
+            "config",
+            "conf",
+            "site",
+            "data",
+        }
+
+        return (
+            str(parameter).lower()
+            in names
+        )
+
+    # ============================================================
