@@ -1325,3 +1325,328 @@ class WAF:
                 )
 
     # ============================================================
+    # LOGGER
+    # ============================================================
+
+    def setup_waf_logger(self):
+
+        os.makedirs(
+            "logs",
+            exist_ok=True
+        )
+
+        logger = logging.getLogger(
+            "WAF_ALERTS"
+        )
+
+        logger.setLevel(
+            logging.INFO
+        )
+
+        if not logger.handlers:
+
+            file_handler = logging.FileHandler(
+                "logs/waf_alerts.log"
+            )
+
+            console_handler = (
+                logging.StreamHandler()
+            )
+
+            formatter = logging.Formatter(
+
+                "[%(asctime)s] WAF_EVENT | "
+                "UID=%(uid)s | "
+                "Rule=%(rule_id)s | "
+                "Category=%(category)s | "
+                "Severity=%(severity)s | "
+                "Client=%(client)s | "
+                "Method=%(method)s | "
+                "Path=%(path)s | "
+                "Score=%(score)s | "
+                "Confidence=%(confidence)s"
+            )
+
+            file_handler.setFormatter(
+                formatter
+            )
+
+            console_handler.setFormatter(
+                formatter
+            )
+
+            logger.addHandler(
+                file_handler
+            )
+
+            logger.addHandler(
+                console_handler
+            )
+
+        return logger
+
+    # ============================================================
+    # NORMALIZATION
+    # ============================================================
+
+    def normalize_variants(
+        self,
+        data,
+        max_decode=3
+    ):
+
+        raw = (
+            ""
+            if data is None
+            else str(data)
+        )
+
+        variants = [
+            raw
+        ]
+
+        current = raw
+
+        for _ in range(max_decode):
+
+            decoded = (
+                urllib.parse.unquote(
+                    current
+                )
+            )
+
+            if decoded == current:
+                break
+
+            variants.append(
+                decoded
+            )
+
+            current = decoded
+
+        html_decoded = (
+            html.unescape(
+                current
+            )
+        )
+
+        if html_decoded not in variants:
+
+            variants.append(
+                html_decoded
+            )
+
+        lowered = (
+            html_decoded.lower()
+        )
+
+        if lowered not in variants:
+
+            variants.append(
+                lowered
+            )
+
+        return variants
+
+    def normalize(
+        self,
+        data,
+        max_decode=3
+    ):
+
+        variants = (
+            self.normalize_variants(
+                data,
+                max_decode
+            )
+        )
+
+        return (
+            variants[-1]
+            if variants
+            else ""
+        )
+
+    # ============================================================
+    # GENERAL HELPERS
+    # ============================================================
+
+    def safe_text(self, value):
+
+        value = (
+            ""
+            if value is None
+            else str(value)
+        )
+
+        return value[
+            :self.max_parameter_value_length
+        ]
+
+    def severity_weight(
+        self,
+        severity
+    ):
+
+        return {
+
+            "LOW": 1,
+            "MEDIUM": 3,
+            "HIGH": 6,
+            "CRITICAL": 10,
+
+        }.get(
+            str(
+                severity
+            ).upper(),
+            1
+        )
+
+    def iter_headers(
+        self,
+        headers
+    ):
+
+        if not headers:
+            return []
+
+        if isinstance(
+            headers,
+            dict
+        ):
+
+            return list(
+                headers.items()
+            )
+
+        return list(
+            headers
+        )
+
+    def get_header(
+        self,
+        headers,
+        name,
+        default=""
+    ):
+
+        if not headers:
+            return default
+
+        target = (
+            name.lower()
+        )
+
+        for key, value in self.iter_headers(
+            headers
+        ):
+
+            if (
+                str(key).lower()
+                == target
+            ):
+
+                return value
+
+        return default
+
+    def get_all_headers(
+        self,
+        headers,
+        name
+    ):
+
+        result = []
+
+        target = (
+            name.lower()
+        )
+
+        for key, value in self.iter_headers(
+            headers
+        ):
+
+            if (
+                str(key).lower()
+                == target
+            ):
+
+                result.append(
+                    str(value)
+                )
+
+        return result
+
+    def rule_context_matches(
+        self,
+        rule,
+        context
+    ):
+
+        contexts = rule.get(
+            "contexts"
+        )
+
+        if not contexts:
+            return True
+
+        return (
+            context
+            in contexts
+        )
+
+    def scan_rule(
+        self,
+        rule,
+        value,
+        context
+    ):
+
+        if not self.rule_context_matches(
+            rule,
+            context
+        ):
+
+            return False
+
+        value = self.safe_text(
+            value
+        )
+
+        for variant in (
+            self.normalize_variants(
+                value
+            )
+        ):
+
+            try:
+
+                if re.search(
+
+                    rule["pattern"],
+
+                    variant,
+
+                    re.IGNORECASE
+                    | re.DOTALL
+
+                ):
+
+                    return True
+
+            except re.error:
+
+                self.logger.exception(
+
+                    "Invalid regex in rule %s",
+
+                    rule.get(
+                        "id"
+                    )
+                )
+
+                return False
+
+        return False
+
+    # ============================================================
