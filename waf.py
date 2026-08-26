@@ -2691,3 +2691,490 @@ class WAF:
         return findings
 
     # ============================================================
+    # CSRF HEURISTIC
+    # ============================================================
+
+    def detect_csrf(
+        self,
+        method,
+        path,
+        body,
+        headers
+    ):
+
+        if (
+            method.upper()
+            not in self.STATE_CHANGING_METHODS
+        ):
+
+            return []
+
+        cookie = (
+            self.get_header(
+                headers,
+                "Cookie",
+                ""
+            )
+        )
+
+        if not cookie:
+            return []
+
+        csrf_names = {
+
+            "csrf",
+            "csrf_token",
+            "csrftoken",
+            "_csrf",
+            "xsrf",
+            "xsrf_token",
+            "x-csrf-token",
+            "x-xsrf-token",
+        }
+
+        found = False
+
+        for key, value in (
+            self.extract_parameters(
+                path,
+                body,
+                headers
+            )
+        ):
+
+            if (
+                key.lower()
+                in csrf_names
+            ):
+
+                found = True
+                break
+
+        if not found:
+
+            for key, value in (
+                self.iter_headers(
+                    headers
+                )
+            ):
+
+                if (
+                    key.lower()
+                    in csrf_names
+                ):
+
+                    found = True
+                    break
+
+        if found:
+            return []
+
+        return [
+
+            {
+                "id":
+                    "CSRF-2101",
+
+                "name":
+                    "Potential Missing CSRF Token",
+
+                "pattern":
+                    "",
+
+                "severity":
+                    "MEDIUM",
+
+                "category":
+                    "CSRF",
+
+                "confidence":
+                    0.55,
+
+                "monitor_only":
+                    self.csrf_monitor_only,
+            }
+        ]
+
+    # ============================================================
+    # RATE LIMITING / BRUTE FORCE
+    # ============================================================
+
+    def detect_rate_limit(
+        self,
+        client_ip,
+        method,
+        path
+    ):
+
+        if not self.enable_rate_limiting:
+            return []
+
+        now = time.time()
+
+        key = (
+            f"{client_ip}:"
+            f"{method}:"
+            f"{path}"
+        )
+
+        queue = (
+            self.rate_counters[
+                key
+            ]
+        )
+
+        while (
+
+            queue
+
+            and
+
+            now - queue[0]
+            > self.RATE_LIMIT_WINDOW
+
+        ):
+
+            queue.popleft()
+
+        queue.append(
+            now
+        )
+
+        findings = []
+
+        if (
+            len(queue)
+            > self.RATE_LIMIT_MAX_REQUESTS
+        ):
+
+            findings.append(
+
+                {
+                    "id":
+                        "RATE-2201",
+
+                    "name":
+                        "Request Rate Limit Exceeded",
+
+                    "pattern":
+                        "",
+
+                    "severity":
+                        "HIGH",
+
+                    "category":
+                        "RATE_LIMIT",
+
+                    "confidence":
+                        0.98,
+                }
+            )
+
+        lower_path = (
+            str(path).lower()
+        )
+
+        is_auth = any(
+
+            item
+            in lower_path
+
+            for item in (
+
+                "/login",
+                "/signin",
+                "/auth",
+                "/authenticate",
+                "/token"
+            )
+        )
+
+        if (
+
+            method.upper()
+            in {"POST", "PUT"}
+
+            and is_auth
+
+        ):
+
+            auth_key = (
+                f"AUTH:"
+                f"{client_ip}:"
+                f"{path}"
+            )
+
+            auth_queue = (
+                self.rate_counters[
+                    auth_key
+                ]
+            )
+
+            while (
+
+                auth_queue
+
+                and
+
+                now
+                - auth_queue[0]
+                > self.AUTH_RATE_LIMIT_WINDOW
+
+            ):
+
+                auth_queue.popleft()
+
+            auth_queue.append(
+                now
+            )
+
+            if (
+                len(auth_queue)
+                > self.AUTH_RATE_LIMIT_MAX_REQUESTS
+            ):
+
+                findings.append(
+
+                    {
+                        "id":
+                            "RATE-2202",
+
+                        "name":
+                            "Authentication Rate Limit Exceeded",
+
+                        "pattern":
+                            "",
+
+                        "severity":
+                            "HIGH",
+
+                        "category":
+                            "BRUTE_FORCE",
+
+                        "confidence":
+                            0.98,
+                    }
+                )
+
+        return findings
+
+    # ============================================================
+    # RESPONSE INSPECTION
+    # ============================================================
+
+    def inspect_response(
+        self,
+        status_code,
+        headers,
+        body="",
+        request_context=None
+    ):
+
+        findings = []
+
+        normalized = {}
+
+        for key, value in (
+            self.iter_headers(
+                headers
+            )
+        ):
+
+            normalized[
+                str(key).lower()
+            ] = str(value)
+
+        # --------------------------------------------------------
+        # SECURITY HEADERS
+        # --------------------------------------------------------
+
+        if (
+            "x-content-type-options"
+            not in normalized
+        ):
+
+            findings.append(
+                dict(
+                    self.response_rules[0]
+                )
+            )
+
+        if (
+            "content-security-policy"
+            not in normalized
+        ):
+
+            findings.append(
+                dict(
+                    self.response_rules[1]
+                )
+            )
+
+        if (
+            "referrer-policy"
+            not in normalized
+        ):
+
+            findings.append(
+                dict(
+                    self.response_rules[2]
+                )
+            )
+
+        if (
+
+            "x-frame-options"
+            not in normalized
+
+            and
+
+            "content-security-policy"
+            not in normalized
+
+        ):
+
+            findings.append(
+                dict(
+                    self.response_rules[3]
+                )
+            )
+
+        # --------------------------------------------------------
+        # SERVER VERSION DISCLOSURE
+        # --------------------------------------------------------
+
+        server = normalized.get(
+            "server",
+            ""
+        )
+
+        if re.search(
+
+            r"(?i)(?:"
+            r"apache|nginx|php|iis)"
+            r"/[\w.\-]+",
+
+            server
+        ):
+
+            findings.append(
+                dict(
+                    self.response_rules[7]
+                )
+            )
+
+        # --------------------------------------------------------
+        # COOKIE SECURITY
+        # --------------------------------------------------------
+
+        set_cookie_values = (
+            self.get_all_headers(
+                headers,
+                "Set-Cookie"
+            )
+        )
+
+        for cookie in (
+            set_cookie_values
+        ):
+
+            low = cookie.lower()
+
+            if (
+                "secure"
+                not in low
+            ):
+
+                findings.append(
+                    dict(
+                        self.response_rules[4]
+                    )
+                )
+
+            if (
+                "httponly"
+                not in low
+            ):
+
+                findings.append(
+                    dict(
+                        self.response_rules[5]
+                    )
+                )
+
+            if (
+                "samesite"
+                not in low
+            ):
+
+                findings.append(
+                    dict(
+                        self.response_rules[6]
+                    )
+                )
+
+        # --------------------------------------------------------
+        # DEDUPLICATION
+        # --------------------------------------------------------
+
+        unique = {}
+
+        for rule in findings:
+
+            unique[
+                rule["id"]
+            ] = rule
+
+        if not unique:
+
+            return (
+                True,
+                "Response allowed"
+            )
+
+        uid = (
+            self.generate_uid()
+        )
+
+        for rule in (
+            unique.values()
+        ):
+
+            self.log_event(
+
+                uid,
+
+                rule,
+
+                "RESPONSE",
+
+                "RESPONSE",
+
+                str(
+                    request_context
+                    or ""
+                ),
+
+                0,
+
+                rule.get(
+                    "confidence",
+                    0.7
+                )
+            )
+
+        ids = ", ".join(
+            unique.keys()
+        )
+
+        # Response security findings are
+        # observations, not automatic request blocks.
+        return (
+
+            True,
+
+            "Response security findings: "
+            f"{ids} | UID={uid}"
+        )
+
+    # ============================================================
