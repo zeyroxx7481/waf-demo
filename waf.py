@@ -2203,3 +2203,491 @@ class WAF:
         )
 
     # ============================================================
+    # RFI DETECTION
+    # ============================================================
+
+    def detect_rfi(
+        self,
+        path,
+        body,
+        headers=None
+    ):
+
+        findings = []
+
+        components = (
+            self.extract_request_components(
+                path,
+                body,
+                headers
+            )
+        )
+
+        for context, name, value in components:
+
+            if context not in {
+
+                "query",
+                "body",
+                "json",
+                "multipart",
+                "filename"
+
+            }:
+
+                continue
+
+            likely_inclusion = (
+                self.is_file_inclusion_parameter(
+                    name
+                )
+            )
+
+            for rule in self.rfi_rules:
+
+                if self.scan_rule(
+                    rule,
+                    value,
+                    context
+                ):
+
+                    copy = dict(
+                        rule
+                    )
+
+                    if likely_inclusion:
+
+                        copy["confidence"] = min(
+
+                            1.0,
+
+                            copy.get(
+                                "confidence",
+                                0.85
+                            ) + 0.03
+                        )
+
+                    findings.append(
+                        copy
+                    )
+
+        return findings
+
+    # ============================================================
+    # COMMAND INJECTION DETECTION
+    # ============================================================
+
+    def detect_command_injection(
+        self,
+        path,
+        body,
+        headers=None
+    ):
+
+        findings = []
+
+        components = (
+            self.extract_request_components(
+                path,
+                body,
+                headers
+            )
+        )
+
+        for context, name, value in components:
+
+            scan_context = (
+
+                "header"
+
+                if context
+                in {
+                    "header",
+                    "cookie"
+                }
+
+                else context
+            )
+
+            for rule in (
+                self.command_injection_rules
+            ):
+
+                if self.scan_rule(
+                    rule,
+                    value,
+                    scan_context
+                ):
+
+                    findings.append(
+                        dict(rule)
+                    )
+
+        return findings
+
+    # ============================================================
+    # HPP DETECTION
+    # ============================================================
+
+    def detect_duplicate_parameters(
+        self,
+        path,
+        body,
+        headers=None
+    ):
+
+        findings = []
+
+        try:
+
+            parsed = (
+                urllib.parse.urlsplit(
+                    path or ""
+                )
+            )
+
+            query_pairs = (
+                urllib.parse.parse_qsl(
+
+                    parsed.query,
+
+                    keep_blank_values=True
+                )
+            )
+
+            body_pairs = (
+                urllib.parse.parse_qsl(
+
+                    body or "",
+
+                    keep_blank_values=True
+                )
+            )
+
+            for source, pairs in (
+
+                (
+                    "query",
+                    query_pairs
+                ),
+
+                (
+                    "body",
+                    body_pairs
+                )
+            ):
+
+                counts = (
+                    defaultdict(int)
+                )
+
+                for name, value in pairs:
+
+                    counts[
+                        name.lower()
+                    ] += 1
+
+                for name, count in (
+                    counts.items()
+                ):
+
+                    if count > 1:
+
+                        rule = dict(
+                            self.hpp_rules[0]
+                        )
+
+                        rule["parameter"] = (
+                            name
+                        )
+
+                        rule["occurrences"] = (
+                            count
+                        )
+
+                        rule["confidence"] = min(
+
+                            0.95,
+
+                            0.65
+                            + count * 0.08
+                        )
+
+                        findings.append(
+                            rule
+                        )
+
+        except Exception:
+
+            pass
+
+        return findings
+
+    # ============================================================
+    # ADVANCED SSRF DETECTION
+    # ============================================================
+
+    def detect_ssrf_special(
+        self,
+        value
+    ):
+
+        findings = []
+
+        text = self.safe_text(
+            value
+        ).strip()
+
+        if not re.match(
+
+            r"(?i)^(?:https?|ftp)://",
+
+            text
+        ):
+
+            return findings
+
+        try:
+
+            parsed = (
+                urllib.parse.urlsplit(
+                    text
+                )
+            )
+
+            hostname = (
+                parsed.hostname
+            )
+
+            if not hostname:
+                return findings
+
+            normalized_host = (
+                hostname
+                .strip("[]")
+                .lower()
+            )
+
+            numeric_ip = None
+
+            # Decimal IPv4 representation.
+            if normalized_host.isdigit():
+
+                number = int(
+                    normalized_host
+                )
+
+                if (
+                    0
+                    <= number
+                    <= 0xFFFFFFFF
+                ):
+
+                    numeric_ip = (
+                        ipaddress.ip_address(
+                            number
+                        )
+                    )
+
+            if numeric_ip is not None:
+
+                ip = numeric_ip
+
+            else:
+
+                ip = (
+                    ipaddress.ip_address(
+                        normalized_host
+                    )
+                )
+
+            if ip.is_loopback:
+
+                rid = "SSRF-605"
+                severity = "HIGH"
+                name = "Loopback IP SSRF"
+
+            elif ip.is_private:
+
+                rid = "SSRF-606"
+                severity = "HIGH"
+                name = "Private IP SSRF"
+
+            elif ip.is_link_local:
+
+                rid = "SSRF-607"
+                severity = "HIGH"
+                name = "Link-local SSRF"
+
+            elif ip.is_reserved:
+
+                rid = "SSRF-608"
+                severity = "MEDIUM"
+                name = "Reserved IP SSRF"
+
+            else:
+
+                return findings
+
+            findings.append(
+
+                {
+                    "id": rid,
+                    "name": name,
+                    "pattern": "",
+                    "severity": severity,
+                    "category": "SSRF",
+                    "confidence": 0.98,
+                }
+            )
+
+        except ValueError:
+
+            pass
+
+        return findings
+
+    # ============================================================
+    # HOST HEADER
+    # ============================================================
+
+    def detect_host_header(
+        self,
+        headers
+    ):
+
+        findings = []
+
+        host_values = (
+            self.get_all_headers(
+                headers,
+                "Host"
+            )
+        )
+
+        for host in host_values:
+
+            for rule in (
+                self.host_header_rules
+            ):
+
+                if self.scan_rule(
+                    rule,
+                    host,
+                    "host"
+                ):
+
+                    findings.append(
+                        dict(rule)
+                    )
+
+            if (
+                "@"
+                in host
+                or "%40"
+                in host.lower()
+            ):
+
+                findings.append(
+
+                    {
+                        "id":
+                            "HOST-1303",
+
+                        "name":
+                            "Host Header Userinfo Injection",
+
+                        "pattern":
+                            "",
+
+                        "severity":
+                            "HIGH",
+
+                        "category":
+                            "HOST_HEADER_INJECTION",
+
+                        "confidence":
+                            0.97,
+                    }
+                )
+
+        return findings
+
+    # ============================================================
+    # HTTP REQUEST SMUGGLING
+    # ============================================================
+
+    def detect_request_smuggling(
+        self,
+        headers
+    ):
+
+        findings = []
+
+        content_lengths = (
+            self.get_all_headers(
+                headers,
+                "Content-Length"
+            )
+        )
+
+        transfer_encodings = (
+            self.get_all_headers(
+                headers,
+                "Transfer-Encoding"
+            )
+        )
+
+        if len(content_lengths) > 1:
+
+            normalized = {
+                value.strip()
+                for value
+                in content_lengths
+            }
+
+            if (
+                len(normalized) > 1
+                or len(content_lengths) > 1
+            ):
+
+                findings.append(
+                    dict(
+                        self.request_smuggling_rules[1]
+                    )
+                )
+
+        if (
+            content_lengths
+            and transfer_encodings
+        ):
+
+            findings.append(
+                dict(
+                    self.request_smuggling_rules[0]
+                )
+            )
+
+        for te in transfer_encodings:
+
+            if re.search(
+
+                r"(?i)(?:"
+                r"chunked\s*,|"
+                r",\s*chunked|"
+                r"identity\s*,|"
+                r",\s*identity"
+                r")",
+
+                te
+            ):
+
+                findings.append(
+                    dict(
+                        self.request_smuggling_rules[2]
+                    )
+                )
+
+        return findings
+
+    # ============================================================
