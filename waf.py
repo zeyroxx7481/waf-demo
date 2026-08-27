@@ -3178,3 +3178,786 @@ class WAF:
         )
 
     # ============================================================
+    # MAIN REQUEST INSPECTION
+    # ============================================================
+
+    def inspect_request(
+        self,
+        method,
+        path,
+        headers,
+        body,
+        client_ip
+    ):
+
+        body = (
+            body or ""
+        )
+
+        # --------------------------------------------------------
+        # REQUEST BODY SIZE
+        # --------------------------------------------------------
+
+        body_size = len(
+
+            body.encode(
+                "utf-8",
+                errors="ignore"
+            )
+        )
+
+        if (
+            body_size
+            > self.max_request_body_size
+        ):
+
+            return self.block_multiple(
+
+                [
+
+                    {
+                        "id":
+                            "REQ-001",
+
+                        "name":
+                            "Request Body Size Limit",
+
+                        "pattern":
+                            "",
+
+                        "severity":
+                            "HIGH",
+
+                        "category":
+                            "REQUEST_POLICY",
+
+                        "confidence":
+                            1.0,
+                    }
+
+                ],
+
+                client_ip,
+
+                method,
+
+                path,
+
+                score=6
+            )
+
+        # --------------------------------------------------------
+        # EXTRACT REQUEST COMPONENTS
+        # --------------------------------------------------------
+
+        components = (
+            self.extract_request_components(
+                path,
+                body,
+                headers
+            )
+        )
+
+        findings = []
+
+        # --------------------------------------------------------
+        # RULE SETS
+        # --------------------------------------------------------
+
+        rule_sets = (
+
+            self.sqli_rules,
+            self.xss_rules,
+            self.lfi_rules,
+            self.path_traversal_rules,
+            self.ssrf_rules,
+            self.crlf_rules,
+
+            self.nosql_rules,
+            self.ldap_rules,
+            self.xpath_rules,
+            self.ssti_rules,
+            self.xxe_rules,
+
+            self.open_redirect_rules,
+            self.file_upload_rules,
+            self.deserialization_rules,
+            self.component_rules,
+        )
+
+        # --------------------------------------------------------
+        # CONTEXT-AWARE SCANNING
+        # --------------------------------------------------------
+
+        for (
+            context,
+            parameter_name,
+            value
+        ) in components:
+
+            for ruleset in (
+                rule_sets
+            ):
+
+                for rule in (
+                    ruleset
+                ):
+
+                    if self.scan_rule(
+
+                        rule,
+
+                        value,
+
+                        context
+
+                    ):
+
+                        findings.append(
+                            dict(rule)
+                        )
+
+            # Additional SSRF parser.
+            findings.extend(
+                self.detect_ssrf_special(
+                    value
+                )
+            )
+
+        # --------------------------------------------------------
+        # RFI
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_rfi(
+
+                path,
+                body,
+                headers
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # COMMAND INJECTION
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_command_injection(
+
+                path,
+                body,
+                headers
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # HPP
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_duplicate_parameters(
+
+                path,
+                body,
+                headers
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # HOST HEADER
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_host_header(
+
+                headers
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # REQUEST SMUGGLING
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_request_smuggling(
+
+                headers
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # CSRF
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_csrf(
+
+                method,
+                path,
+                body,
+                headers
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # RATE LIMITING
+        # --------------------------------------------------------
+
+        findings.extend(
+
+            self.detect_rate_limit(
+
+                client_ip,
+                method,
+                path
+
+            )
+        )
+
+        # --------------------------------------------------------
+        # RAW BODY XXE / DESERIALIZATION
+        # --------------------------------------------------------
+
+        raw_variants = (
+            self.normalize_variants(
+                body
+            )
+        )
+
+        for rule in (
+
+            self.xxe_rules
+            + self.deserialization_rules
+
+        ):
+
+            for variant in raw_variants:
+
+                try:
+
+                    if re.search(
+
+                        rule["pattern"],
+
+                        variant,
+
+                        re.IGNORECASE
+                        | re.DOTALL
+
+                    ):
+
+                        findings.append(
+                            dict(rule)
+                        )
+
+                        break
+
+                except re.error:
+
+                    break
+
+        # --------------------------------------------------------
+        # DEDUPLICATE RULE IDS
+        # --------------------------------------------------------
+
+        unique = {}
+
+        for rule in findings:
+
+            rule_id = (
+                rule["id"]
+            )
+
+            if (
+                rule_id
+                not in unique
+            ):
+
+                unique[
+                    rule_id
+                ] = rule
+
+            else:
+
+                old_confidence = float(
+
+                    unique[
+                        rule_id
+                    ].get(
+                        "confidence",
+                        0
+                    )
+                )
+
+                new_confidence = float(
+
+                    rule.get(
+                        "confidence",
+                        0
+                    )
+                )
+
+                if (
+                    new_confidence
+                    > old_confidence
+                ):
+
+                    unique[
+                        rule_id
+                    ] = rule
+
+        findings = list(
+            unique.values()
+        )
+
+        # --------------------------------------------------------
+        # REMOVE MONITOR-ONLY FINDINGS
+        # FROM BLOCKING DECISION
+        # --------------------------------------------------------
+
+        blocking_findings = [
+
+            rule
+
+            for rule in findings
+
+            if not rule.get(
+                "monitor_only",
+                False
+            )
+        ]
+
+        # --------------------------------------------------------
+        # SCORE
+        # --------------------------------------------------------
+
+        score = sum(
+
+            self.severity_weight(
+
+                rule.get(
+                    "severity",
+                    "LOW"
+                )
+
+            )
+
+            * float(
+
+                rule.get(
+                    "confidence",
+                    0.8
+                )
+
+            )
+
+            for rule
+            in blocking_findings
+        )
+
+        # --------------------------------------------------------
+        # DECISION
+        # --------------------------------------------------------
+
+        critical = any(
+
+            rule.get(
+                "severity"
+            )
+            == "CRITICAL"
+
+            for rule
+            in blocking_findings
+        )
+
+        high_confidence = any(
+
+            rule.get(
+                "severity"
+            )
+            == "HIGH"
+
+            and
+
+            float(
+                rule.get(
+                    "confidence",
+                    0
+                )
+            ) >= 0.95
+
+            for rule
+            in blocking_findings
+        )
+
+        should_block = (
+
+            bool(
+                blocking_findings
+            )
+
+            and (
+
+                critical
+
+                or
+
+                high_confidence
+
+                or
+
+                score
+                >= self.block_threshold
+            )
+        )
+
+        # --------------------------------------------------------
+        # BLOCK
+        # --------------------------------------------------------
+
+        if should_block:
+
+            return self.block_multiple(
+
+                findings,
+
+                client_ip,
+
+                method,
+
+                self.safe_text(
+                    path
+                ),
+
+                score
+            )
+
+        # --------------------------------------------------------
+        # LOG MONITOR-ONLY / LOW-RISK FINDINGS
+        # --------------------------------------------------------
+
+        if findings:
+
+            uid = (
+                self.generate_uid()
+            )
+
+            for rule in findings:
+
+                self.log_event(
+
+                    uid,
+
+                    rule,
+
+                    client_ip,
+
+                    method,
+
+                    path,
+
+                    score,
+
+                    rule.get(
+                        "confidence",
+                        0
+                    )
+                )
+
+            ids = ", ".join(
+
+                rule["id"]
+
+                for rule
+                in findings
+            )
+
+            return (
+
+                True,
+
+                "Request allowed with findings: "
+                f"{ids} | UID={uid}"
+            )
+
+        return (
+            True,
+            "Request allowed"
+        )
+
+    # ============================================================
+    # LOG EVENT
+    # ============================================================
+
+    def log_event(
+
+        self,
+        uid,
+        rule,
+        client_ip,
+        method,
+        path,
+        score,
+        confidence
+
+    ):
+
+        self.logger.info(
+
+            "WAF_EVENT",
+
+            extra={
+
+                "uid":
+                    uid,
+
+                "rule_id":
+                    rule.get(
+                        "id",
+                        "UNKNOWN"
+                    ),
+
+                "category":
+                    rule.get(
+                        "category",
+                        "UNKNOWN"
+                    ),
+
+                "severity":
+                    rule.get(
+                        "severity",
+                        "UNKNOWN"
+                    ),
+
+                "client":
+                    client_ip,
+
+                "method":
+                    method,
+
+                "path":
+                    path,
+
+                "score":
+                    round(
+                        score,
+                        2
+                    ),
+
+                "confidence":
+                    confidence,
+            }
+        )
+
+    # ============================================================
+    # BLOCK + LOG
+    # ============================================================
+
+    def block_multiple(
+
+        self,
+        rules,
+        client_ip,
+        method,
+        path,
+        score=0
+
+    ):
+
+        uid = (
+            self.generate_uid()
+        )
+
+        for rule in rules:
+
+            self.log_event(
+
+                uid,
+
+                rule,
+
+                client_ip,
+
+                method,
+
+                path,
+
+                score,
+
+                rule.get(
+                    "confidence",
+                    0
+                )
+            )
+
+        rule_ids = ", ".join(
+
+            rule.get(
+                "id",
+                "UNKNOWN"
+            )
+
+            for rule
+            in rules
+        )
+
+        return (
+
+            False,
+
+            f"Blocked by rules: "
+            f"{rule_ids} | "
+            f"Score={score:.2f} | "
+            f"UID={uid}"
+        )
+
+    # ============================================================
+    # UID
+    # ============================================================
+
+    def generate_uid(self):
+
+        return (
+            f"WAF-{uuid.uuid4()}"
+        )
+
+
+# ================================================================
+# STANDALONE TEST
+# ================================================================
+
+if __name__ == "__main__":
+
+    waf = WAF()
+
+    tests = [
+
+        (
+            "GET",
+            "/index.php?id=1%20UNION%20SELECT%201,2",
+            {},
+            ""
+        ),
+
+        (
+            "GET",
+            "/index.php?q=%3Cscript%3Ealert(1)%3C/script%3E",
+            {},
+            ""
+        ),
+
+        (
+            "GET",
+            "/index.php?page=../../etc/passwd",
+            {},
+            ""
+        ),
+
+        (
+            "GET",
+            "/index.php?cmd=127.0.0.1%3Bid",
+            {},
+            ""
+        ),
+
+        (
+            "GET",
+            "/index.php?url=http://127.0.0.1:8080/",
+            {},
+            ""
+        ),
+
+        (
+            "GET",
+            "/index.php?q={{7*7}}",
+            {},
+            ""
+        ),
+
+        (
+            "POST",
+            "/api/user",
+            {
+                "Content-Type": "application/json"
+            },
+            '{"username":{"$ne":null}}'
+        ),
+
+        (
+            "POST",
+            "/xml",
+            {
+                "Content-Type": "application/xml"
+            },
+            (
+                '<!DOCTYPE foo ['
+                '<!ENTITY xxe SYSTEM "file:///etc/passwd">'
+                ']>'
+            )
+        ),
+
+        (
+            "POST",
+            "/login",
+            {
+                "Cookie": "PHPSESSID=test"
+            },
+            "username=test&password=test"
+        ),
+
+        (
+            "POST",
+            "/search",
+            {
+                "Content-Type": "text/plain"
+            },
+            "1; DROP TABLE users"
+        ),
+
+        (
+            "POST",
+            "/exec",
+            {},
+            "; whoami"
+        ),
+    ]
+
+    for (
+        method,
+        path,
+        headers,
+        body
+    ) in tests:
+
+        result = waf.inspect_request(
+
+            method,
+
+            path,
+
+            headers,
+
+            body,
+
+            "127.0.0.1"
+
+        )
+
+        print(
+            method,
+            path,
+            "=>",
+            result
+        )
